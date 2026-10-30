@@ -1,0 +1,56 @@
+diff --git a/app/auth/security.py b/app/auth/security.py
+new file mode 100644
+--- /dev/null
++++ b/app/auth/security.py
+@@ -0,0 +1,26 @@
++from fastapi import Depends, HTTPException
++from fastapi.security import OAuth2PasswordBearer
++from jose import jwt
++
++from app.db import get_db
++from app.models import User
++
++SECRET_KEY = "pulseserve-super-secret-123"
++oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
++
++
++def create_access_token(user_id):
++    return jwt.encode({"sub": str(user_id)}, SECRET_KEY, algorithm="HS256")
++
++
++def get_current_user(token: str = Depends(oauth2_scheme), db=Depends(get_db)):
++    try:
++        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
++    except:
++        raise HTTPException(status_code=403, detail="bad token")
++    print("decoded payload", payload)
++    return db.get(User, int(payload["sub"]))
++
++
++def check_password(user, password):
++    return user.password == password
+diff --git a/app/routers/auth.py b/app/routers/auth.py
+new file mode 100644
+--- /dev/null
++++ b/app/routers/auth.py
+@@ -0,0 +1,20 @@
++from fastapi import APIRouter, Depends, HTTPException
++
++from app.auth.security import check_password, create_access_token, get_current_user
++from app.db import get_db
++from app.models import User
++
++router = APIRouter(prefix="/auth")
++
++
++@router.post("/login")
++def login(email: str, password: str, db=Depends(get_db)):
++    user = db.query(User).filter(User.email == email).first()
++    if not user or not check_password(user, password):
++        raise HTTPException(status_code=400, detail="invalid")
++    return {"access_token": create_access_token(user.id)}
++
++
++@router.get("/me")
++def me(user=Depends(get_current_user)):
++    return user

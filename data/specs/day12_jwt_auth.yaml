@@ -1,0 +1,43 @@
+id: pyb-day12
+lab: Python Backend Lab (PulseServe API)
+day: 12
+title: "JWT login + protected /me endpoint"
+objective: >
+  Implement POST /auth/login that verifies a user's email and password and returns a signed JWT
+  access token, and GET /auth/me that returns the current user when called with a valid Bearer token.
+file_targets:
+  - "app/auth/*.py"
+  - "app/routers/auth.py"
+  - "app/core/config.py"
+  - "tests/*.py"
+acceptance_criteria:
+  - "Passwords are verified against a bcrypt/argon2 hash, never compared in plain text"
+  - "The signing secret is read from configuration/environment, not hard-coded"
+  - "Access tokens carry an `exp` claim (default 30 minutes) and `sub` = user id"
+  - "Invalid, expired or tampered tokens return 401 with a WWW-Authenticate header"
+  - "Tests cover: successful login, wrong password, /me with valid token, /me with invalid token"
+rubric:
+  - id: security
+    name: Secure credential handling
+    description: Hashing, secret management, signature verification, expiry.
+    weight: 3
+    categories: [security]
+    expect: ['(verify|checkpw)\(', 'os\.environ|settings\.|getenv', '"exp"|''exp''']
+  - id: correctness
+    name: Endpoint behaviour
+    description: Correct status codes and error handling for every acceptance criterion.
+    weight: 2
+    categories: [correctness]
+    expect: ['401', 'WWW-Authenticate']
+  - id: tests
+    name: Test coverage
+    description: The four required scenarios are tested with meaningful assertions.
+    weight: 2
+    categories: [testing]
+    expect: ['def test_\w*login', 'def test_\w*me']
+  - id: quality
+    name: Code quality
+    description: Readable, typed, no dead code or debug output; follows project structure.
+    weight: 1
+    categories: [hygiene, quality, spec]
+mentor_notes: "Common mistakes this week: secrets in code, missing exp, catching bare exceptions around jwt.decode."

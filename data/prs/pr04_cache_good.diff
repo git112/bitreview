@@ -1,0 +1,128 @@
+diff --git a/app/cache/service_cache.py b/app/cache/service_cache.py
+new file mode 100644
+--- /dev/null
++++ b/app/cache/service_cache.py
+@@ -0,0 +1,39 @@
++import json
++import logging
++
++from redis import Redis
++from redis.exceptions import RedisError
++
++from app.core.config import settings
++
++logger = logging.getLogger(__name__)
++
++
++def _key(service_id: int) -> str:
++    return f"service:v1:{service_id}"
++
++
++class ServiceCache:
++    def __init__(self, client: Redis, ttl_seconds: int = settings.CACHE_TTL_SECONDS):
++        self.client = client
++        self.ttl = ttl_seconds
++
++    def get(self, service_id: int) -> dict | None:
++        try:
++            raw = self.client.get(_key(service_id))
++        except RedisError as exc:
++            logger.warning("redis get failed, serving from db: %s", exc)
++            return None
++        return json.loads(raw) if raw else None
++
++    def put(self, service_id: int, data: dict) -> None:
++        try:
++            self.client.set(_key(service_id), json.dumps(data), ex=self.ttl)
++        except RedisError as exc:
++            logger.warning("redis set failed: %s", exc)
++
++    def invalidate(self, service_id: int) -> None:
++        try:
++            self.client.delete(_key(service_id))
++        except RedisError as exc:
++            logger.warning("redis delete failed: %s", exc)
++
++
++_client = Redis.from_url(settings.REDIS_URL)
++
++
++def get_cache() -> ServiceCache:
++    return ServiceCache(_client)
+diff --git a/app/routers/services.py b/app/routers/services.py
+--- a/app/routers/services.py
++++ b/app/routers/services.py
+@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
+
+ from app import crud
++from app.cache.service_cache import ServiceCache, get_cache
+ from app.db import get_db
+ from app.schemas import ServiceIn, ServiceOut
+
+@@ -20,13 +21,25 @@ router = APIRouter(prefix="/services", tags=["services"])
+
+ @router.get("/{service_id}", response_model=ServiceOut)
+-def get_service(service_id: int, db: Session = Depends(get_db)):
+-    return crud.get_service_or_404(db, service_id)
++def get_service(service_id: int, db: Session = Depends(get_db), cache: ServiceCache = Depends(get_cache)):
++    cached = cache.get(service_id)
++    if cached is not None:
++        return cached
++    service = ServiceOut.model_validate(crud.get_service_or_404(db, service_id))
++    cache.put(service_id, service.model_dump(mode="json"))
++    return service
+
+
+ @router.put("/{service_id}", response_model=ServiceOut)
+-def update_service(service_id: int, body: ServiceIn, db: Session = Depends(get_db)):
+-    return crud.update_service(db, service_id, body)
++def update_service(service_id: int, body: ServiceIn, db: Session = Depends(get_db),
++                   cache: ServiceCache = Depends(get_cache)):
++    service = crud.update_service(db, service_id, body)
++    cache.invalidate(service_id)
++    return service
+
+
+ @router.delete("/{service_id}", status_code=204)
+-def delete_service(service_id: int, db: Session = Depends(get_db)):
+-    crud.delete_service(db, service_id)
++def delete_service(service_id: int, db: Session = Depends(get_db), cache: ServiceCache = Depends(get_cache)):
++    crud.delete_service(db, service_id)
++    cache.invalidate(service_id)
+diff --git a/tests/test_service_cache.py b/tests/test_service_cache.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_service_cache.py
+@@ -0,0 +1,33 @@
++import fakeredis
++from redis.exceptions import ConnectionError as RedisConnectionError
++
++from app.cache.service_cache import ServiceCache
++
++
++def test_cache_miss_then_hit():
++    cache = ServiceCache(fakeredis.FakeRedis(), ttl_seconds=60)
++    assert cache.get(1) is None
++    cache.put(1, {"id": 1, "name": "Physio"})
++    assert cache.get(1) == {"id": 1, "name": "Physio"}
++    assert 0 < cache.client.ttl("service:v1:1") <= 60
++
++
++def test_invalidate_removes_only_that_key():
++    cache = ServiceCache(fakeredis.FakeRedis())
++    cache.put(1, {"id": 1})
++    cache.put(2, {"id": 2})
++    cache.invalidate(1)
++    assert cache.get(1) is None and cache.get(2) == {"id": 2}
++
++
++def test_invalidate_on_update_endpoint(client, make_services, cache):
++    sid = make_services(1)[0].id
++    client.get(f"/services/{sid}")
++    client.put(f"/services/{sid}", json={"name": "Renamed"})
++    assert cache.get(sid) is None
++
++
++def test_redis_down_fails_open(mocker):
++    client = mocker.Mock(get=mocker.Mock(side_effect=RedisConnectionError("down")))
++    assert ServiceCache(client).get(1) is None

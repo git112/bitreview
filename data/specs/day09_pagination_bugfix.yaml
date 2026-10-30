@@ -1,0 +1,41 @@
+id: pyb-day09
+lab: Python Backend Lab (PulseServe API)
+day: 9
+title: "Bug hunt: /services pagination returns duplicate rows"
+objective: >
+  Users report that page 2 of GET /services repeats the last item of page 1. Reproduce the bug,
+  find the root cause, fix it, and add a regression test that fails before your fix.
+file_targets:
+  - "app/routers/services.py"
+  - "app/crud/*.py"
+  - "tests/*.py"
+acceptance_criteria:
+  - "GET /services?page=N&size=S returns items (N-1)*S .. N*S-1 with no overlap between pages"
+  - "page and size are validated (page >= 1, 1 <= size <= 100) and invalid values return 422"
+  - "A regression test covers at least pages 1 and 2 and asserts there is no overlap"
+  - "Queries use the ORM or bound parameters - no SQL string building"
+rubric:
+  - id: root_cause
+    name: Root cause fixed
+    description: The offset calculation is corrected at its source, not patched around.
+    weight: 2
+    categories: [correctness]
+    expect: ['offset\s*=?\s*\(?\s*page\s*-\s*1']
+  - id: validation
+    name: Input validation
+    description: page/size bounds enforced via Query(ge=, le=) or equivalent.
+    weight: 1
+    categories: [spec]
+    expect: ['ge\s*=\s*1', 'le\s*=\s*100']
+  - id: tests
+    name: Regression test
+    description: A test that would have caught the bug; asserts on page contents, not just status.
+    weight: 2
+    categories: [testing]
+    expect: ['def test_\w*pag']
+  - id: safety
+    name: Safe data access
+    description: No raw SQL interpolation; no leftover debugging.
+    weight: 1
+    categories: [security, hygiene]
+mentor_notes: "Week 2 is about root-cause analysis. Reward a clear PR description of the cause."

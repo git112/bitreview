@@ -1,0 +1,14 @@
+diff --git a/app/crud/services.py b/app/crud/services.py
+--- a/app/crud/services.py
++++ b/app/crud/services.py
+@@ -14,6 +14,9 @@ def get_service_or_404(db: Session, service_id: int) -> Service:
+
+ def list_services(db: Session, page: int, size: int) -> list[Service]:
+-    offset = page * size - 1
+-    stmt = select(Service).order_by(Service.id).offset(offset).limit(size)
+-    return list(db.scalars(stmt))
++    # TODO: validate page and size
++    offset = (page - 1) * size
++    rows = db.execute(text(f"SELECT * FROM services ORDER BY id LIMIT {size} OFFSET {offset}"))
++    print(rows)
++    return [Service(**r._mapping) for r in rows]

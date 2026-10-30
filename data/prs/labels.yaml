@@ -1,0 +1,69 @@
+# Ground truth for the eval harness (eval/run_eval.py).
+# An issue counts as found when a blocker/major/minor finding has the same file, one of the listed
+# categories, and a line within +/-3 of `line`.
+# `rule_detectable: false` marks issues that need reasoning (logic bugs, spec gaps) - the offline
+# baseline is expected to miss these; they are what the LLM reviewer is for.
+
+pr01_jwt_good:
+  spec: day12_jwt_auth
+  verdict: approve
+  issues: []
+
+pr02_jwt_insecure:
+  spec: day12_jwt_auth
+  verdict: request_changes
+  issues:
+    - {id: hardcoded-secret, file: app/auth/security.py, line: 8, categories: [security], rule_detectable: true}
+    - {id: no-exp, file: app/auth/security.py, line: 13, categories: [security], rule_detectable: true}
+    - {id: bare-except, file: app/auth/security.py, line: 19, categories: [correctness], rule_detectable: true}
+    - {id: wrong-status-403, file: app/auth/security.py, line: 20, categories: [correctness, spec], rule_detectable: false}
+    - {id: debug-print, file: app/auth/security.py, line: 21, categories: [hygiene, security], rule_detectable: true}
+    - {id: plaintext-password, file: app/auth/security.py, line: 26, categories: [security], rule_detectable: true}
+    - {id: login-400-not-401, file: app/routers/auth.py, line: 14, categories: [correctness, spec], rule_detectable: false}
+    - {id: no-tests, file: app/auth/security.py, line: 1, categories: [testing], rule_detectable: true, any_line: true}
+
+pr03_jwt_injection:
+  spec: day12_jwt_auth
+  verdict: request_changes
+  issues:
+    - {id: prompt-injection, file: app/auth/security.py, line: 1, categories: [security], rule_detectable: true}
+    - {id: jwt-no-verify, file: app/auth/security.py, line: 28, categories: [security], rule_detectable: true}
+    - {id: missing-negative-tests, file: tests/test_auth.py, line: 1, categories: [testing, spec], rule_detectable: false, any_line: true}
+
+pr04_cache_good:
+  spec: day23_redis_cache
+  verdict: approve
+  issues: []
+
+pr05_cache_bad:
+  spec: day23_redis_cache
+  verdict: request_changes
+  issues:
+    - {id: bare-except, file: app/cache/service_cache.py, line: 12, categories: [correctness], rule_detectable: true}
+    - {id: no-ttl, file: app/cache/service_cache.py, line: 17, categories: [performance, correctness], rule_detectable: true}
+    - {id: todo, file: app/cache/service_cache.py, line: 21, categories: [hygiene, spec], rule_detectable: true}
+    - {id: redis-keys, file: app/cache/service_cache.py, line: 22, categories: [performance], rule_detectable: true}
+    - {id: global-invalidation, file: app/cache/service_cache.py, line: 20, categories: [performance, spec, correctness], rule_detectable: false}
+    - {id: debug-print, file: app/cache/service_cache.py, line: 24, categories: [hygiene], rule_detectable: true}
+    - {id: assert-true, file: tests/test_service_cache.py, line: 6, categories: [testing], rule_detectable: true}
+
+pr06_pagination_good:
+  spec: day09_pagination_bugfix
+  verdict: approve
+  issues: []
+
+pr07_pagination_sqli:
+  spec: day09_pagination_bugfix
+  verdict: request_changes
+  issues:
+    - {id: sql-injection, file: app/crud/services.py, line: 18, categories: [security], rule_detectable: true}
+    - {id: todo, file: app/crud/services.py, line: 16, categories: [hygiene, spec], rule_detectable: true}
+    - {id: debug-print, file: app/crud/services.py, line: 19, categories: [hygiene], rule_detectable: true}
+    - {id: no-tests, file: app/crud/services.py, line: 16, categories: [testing], rule_detectable: true, any_line: true}
+
+pr08_pagination_subtle:
+  spec: day09_pagination_bugfix
+  verdict: request_changes
+  issues:
+    - {id: limit-off-by-one, file: app/crud/services.py, line: 17, categories: [correctness], rule_detectable: false}
+    - {id: weak-regression-test, file: tests/test_services_pagination.py, line: 5, categories: [testing], rule_detectable: false}

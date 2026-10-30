@@ -1,0 +1,62 @@
+diff --git a/app/cache/service_cache.py b/app/cache/service_cache.py
+new file mode 100644
+--- /dev/null
++++ b/app/cache/service_cache.py
+@@ -0,0 +1,24 @@
++import json
++
++from redis import Redis
++
++r = Redis.from_url("redis://localhost:6379/0")
++
++
++def get_cached(service_id):
++    try:
++        raw = r.get("service:" + str(service_id))
++        return json.loads(raw) if raw else None
++    except:
++        return None
++
++
++def set_cached(service_id, data):
++    r.set("service:" + str(service_id), json.dumps(data))
++
++
++def invalidate_services():
++    # TODO: only delete the one that changed
++    for key in r.keys("service:*"):
++        r.delete(key)
++    print("cache cleared")
+diff --git a/app/routers/services.py b/app/routers/services.py
+--- a/app/routers/services.py
++++ b/app/routers/services.py
+@@ -20,8 +20,13 @@ router = APIRouter(prefix="/services", tags=["services"])
+
+ @router.get("/{service_id}", response_model=ServiceOut)
+-def get_service(service_id: int, db: Session = Depends(get_db)):
+-    return crud.get_service_or_404(db, service_id)
++def get_service(service_id: int, db: Session = Depends(get_db)):
++    cached = get_cached(service_id)
++    if cached:
++        return cached
++    service = crud.get_service_or_404(db, service_id)
++    set_cached(service_id, ServiceOut.model_validate(service).model_dump(mode="json"))
++    return service
+
+
+ @router.put("/{service_id}", response_model=ServiceOut)
+@@ -30,4 +35,5 @@ def update_service(service_id: int, body: ServiceIn, db: Session = Depends(get_db)):
+-    return crud.update_service(db, service_id, body)
++    invalidate_services()
++    return crud.update_service(db, service_id, body)
+diff --git a/tests/test_service_cache.py b/tests/test_service_cache.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_service_cache.py
+@@ -0,0 +1,6 @@
++from app.cache.service_cache import get_cached
++
++
++def test_cache_works():
++    get_cached(1)
++    assert True

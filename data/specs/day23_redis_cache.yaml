@@ -1,0 +1,43 @@
+id: pyb-day23
+lab: Python Backend Lab (PulseServe API)
+day: 23
+title: "Cache GET /services/{id} in Redis with safe invalidation"
+objective: >
+  The service detail endpoint is the hottest read path. Add a Redis read-through cache with a TTL
+  and invalidate the entry when the service is updated or deleted.
+file_targets:
+  - "app/cache/*.py"
+  - "app/routers/services.py"
+  - "tests/*.py"
+acceptance_criteria:
+  - "Cache hits skip the database; misses populate the cache"
+  - "Every cache entry has a TTL (configurable, default 300s)"
+  - "PUT and DELETE on a service invalidate exactly that service's key - no KEYS/flush operations"
+  - "If Redis is unavailable the endpoint still serves from the database (fail open) and logs a warning"
+  - "Tests cover hit, miss, invalidation-on-update and Redis-down behaviour"
+rubric:
+  - id: caching
+    name: Cache correctness
+    description: Read-through logic, TTL on every write, correct key scheme.
+    weight: 2
+    categories: [performance, correctness]
+    expect: ['ex\s*=', '\.get\(']
+  - id: invalidation
+    name: Invalidation
+    description: Targeted delete on update/delete; no O(N) or global operations.
+    weight: 2
+    categories: [performance]
+    expect: ['\.delete\(']
+  - id: resilience
+    name: Fail-open resilience
+    description: Redis errors are caught specifically and logged; the request still succeeds.
+    weight: 1
+    categories: [correctness]
+    expect: ['RedisError|ConnectionError', 'logger\.warning|log\.warning']
+  - id: tests
+    name: Test coverage
+    description: Hit/miss/invalidation/redis-down scenarios with real assertions.
+    weight: 2
+    categories: [testing]
+    expect: ['def test_\w*(hit|miss)', 'def test_\w*invalidat']
+mentor_notes: "Week 5-6 theme is speed and concurrency. Watch for KEYS * and caches without TTL."

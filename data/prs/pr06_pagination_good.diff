@@ -1,0 +1,45 @@
+diff --git a/app/routers/services.py b/app/routers/services.py
+--- a/app/routers/services.py
++++ b/app/routers/services.py
+@@ -10,6 +10,10 @@ router = APIRouter(prefix="/services", tags=["services"])
+
+ @router.get("", response_model=list[ServiceOut])
+-def list_services(page: int = 1, size: int = 20, db: Session = Depends(get_db)):
++def list_services(
++    page: int = Query(1, ge=1),
++    size: int = Query(20, ge=1, le=100),
++    db: Session = Depends(get_db),
++):
+     return crud.list_services(db, page=page, size=size)
+diff --git a/app/crud/services.py b/app/crud/services.py
+--- a/app/crud/services.py
++++ b/app/crud/services.py
+@@ -14,6 +14,7 @@ def get_service_or_404(db: Session, service_id: int) -> Service:
+
+ def list_services(db: Session, page: int, size: int) -> list[Service]:
+-    offset = page * size - 1
++    # Pages are 1-indexed: page 1 starts at row 0. The old formula overlapped by one row.
++    offset = (page - 1) * size
+     stmt = select(Service).order_by(Service.id).offset(offset).limit(size)
+     return list(db.scalars(stmt))
+diff --git a/tests/test_services_pagination.py b/tests/test_services_pagination.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_services_pagination.py
+@@ -0,0 +1,19 @@
++import pytest
++
++
++def test_pages_do_not_overlap(client, make_services):
++    make_services(45)
++    page1 = [s["id"] for s in client.get("/services?page=1&size=20").json()]
++    page2 = [s["id"] for s in client.get("/services?page=2&size=20").json()]
++    page3 = [s["id"] for s in client.get("/services?page=3&size=20").json()]
++    assert len(page1) == 20 and len(page2) == 20 and len(page3) == 5
++    assert not set(page1) & set(page2)
++    assert page2[0] == page1[-1] + 1
++
++
++@pytest.mark.parametrize("query", ["page=0", "size=0", "size=101", "page=-1"])
++def test_pagination_rejects_invalid_params(client, query):
++    assert client.get(f"/services?{query}").status_code == 422
